@@ -193,7 +193,7 @@ func (p *serverPanel) rebuild() {
 
 	var match []agent.Server
 	for _, sv := range list {
-		hay := strings.ToLower(sv.Name + " " + sv.IP + " " + string(sv.Env) + " " + sv.Group)
+		hay := strings.ToLower(sv.Name + " " + sv.Login() + " " + string(sv.Env) + " " + sv.Group)
 		if q == "" || strings.Contains(hay, q) {
 			match = append(match, sv)
 		}
@@ -294,7 +294,7 @@ func (p *serverPanel) row(sv agent.Server, active bool) (*Pressable, func()) {
 
 	name := text(sv.Name, theme.TextSize(), theme.ColorNameForeground, active)
 	top := container.NewHBox(name, envBadge(sv.Env), spacer(), status)
-	subText := sv.IP
+	subText := sv.Login()
 	if active {
 		subText += " · подключён"
 	}

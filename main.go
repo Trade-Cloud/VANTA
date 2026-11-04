@@ -6,12 +6,14 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 
-	"github.com/Trade-Cloud/vanta/internal/agent"
+	"github.com/Trade-Cloud/vanta/assets"
 	"github.com/Trade-Cloud/vanta/internal/apptheme"
 	"github.com/Trade-Cloud/vanta/internal/core"
 	"github.com/Trade-Cloud/vanta/internal/debugbridge"
+	"github.com/Trade-Cloud/vanta/internal/dockicon"
 	"github.com/Trade-Cloud/vanta/internal/header"
 	"github.com/Trade-Cloud/vanta/internal/prefs"
+	"github.com/Trade-Cloud/vanta/internal/remote"
 	"github.com/Trade-Cloud/vanta/internal/screens"
 	"github.com/Trade-Cloud/vanta/internal/stage"
 )
@@ -31,12 +33,20 @@ func main() {
 	}
 
 	a := app.NewWithID(appID)
+	// Иконка окон (Windows/Linux). Для .app-бандла её же берёт
+	// `fyne package` из FyneApp.toml.
+	a.SetIcon(assets.AppIcon)
+	// На macOS без .app-бандла Fyne иконку в док не ставит — ставим сами.
+	a.Lifecycle().SetOnStarted(func() { dockicon.Set(assets.AppIcon.Content()) })
 	apptheme.Apply(a, st.Theme)
 
-	// Агента пока нет: данные панели — из Mock за интерфейсом agent.Backend.
-	backend := agent.NewMock()
+	// Серверы — из локального конфига, подключение по SSH. Вопросы при
+	// подключении (ключ нового хоста, пароль) — отдельные окна header.
+	// agent.NewMock() по-прежнему годится для работы над UI без серверов.
+	backend := remote.New(header.Prompter{})
 	defer backend.Close()
 	store := core.NewStore(backend, fyne.Do, st)
+	store.SudoAsker = header.Prompter{}.SudoPassword
 	store.Start()
 	defer store.Stop()
 

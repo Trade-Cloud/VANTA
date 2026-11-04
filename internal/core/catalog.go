@@ -54,7 +54,7 @@ var Sections = []Section{
 	}},
 	{ID: "security", Title: "Security", Pages: []Page{
 		p("security/firewall", "Firewall", "Правила ufw / nftables"),
-		p("security/ssh", "SSH", "Ключи и настройки sshd"),
+		p("security/ssh", "SSH", "Ключи ssh"),
 		p("security/audit", "Audit", "Журнал действий"),
 		p("security/access", "Access", "Доступ к серверам"),
 	}},

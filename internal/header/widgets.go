@@ -231,7 +231,7 @@ func hsep() fyne.CanvasObject {
 // skeleton — серый прямоугольник вместо ещё не загруженных данных.
 func skeleton(w, h float32) fyne.CanvasObject {
 	r := newVRect(theme.ColorNameDisabledButton)
-	r.Radius = h / 2
+	r.Radius = 0
 	return fixed(fyne.NewSize(w, h), r)
 }
 
@@ -247,7 +247,7 @@ func badge(base fyne.CanvasObject, n int) fyne.CanvasObject {
 	t := text(s, 9, theme.ColorNameForegroundOnError, true)
 	t.Align = fyne.TextAlignCenter
 	bg := newVRect(theme.ColorNameError)
-	bg.Radius = 7
+	bg.Radius = 0
 	b := container.NewStack(bg, container.NewCenter(t))
 	return container.New(&badgeLayout{}, base, b)
 }
@@ -349,7 +349,7 @@ func envBadge(e agent.Env) fyne.CanvasObject {
 	}
 	t := text(short, 9, envColor(e), true)
 	bg := newVRect("")
-	bg.StrokeName, bg.StrokeWidth, bg.Radius = envColor(e), 1, 3
+	bg.StrokeName, bg.StrokeWidth, bg.Radius = envColor(e), 1, 0
 	return container.NewCenter(container.NewStack(bg, container.New(&insetLayout{4, 1}, t)))
 }
 

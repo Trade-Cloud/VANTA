@@ -1,2 +1,218 @@
+# =====================================================================
+#  VANTA — .gitignore
+#  Go + Fyne, macOS / Windows / Linux
+# =====================================================================
+
+# ---------------------------------------------------------------------
+#  Локальные заметки (были здесь раньше)
+# ---------------------------------------------------------------------
 startup.md
 debugger/README.md
+
+# ---------------------------------------------------------------------
+#  Результаты сборки (build.sh / build.ps1)
+# ---------------------------------------------------------------------
+/dist/
+/build/
+/bin/
+/out/
+/release/
+
+# Бинарники от `go build .` / `go build ./debugger` в корне.
+# ВНИМАНИЕ: «/debugger» без расширения не игнорируем — это папка с кодом.
+/vanta
+/Vanta
+/vanta-*
+/Vanta-*
+/debugger.exe
+
+# Пакеты и бандлы
+*.app/
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+*.msi
+*.msix
+*.appx
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.apk
+*.aab
+*.ipa
+*.AppImage
+*.snap
+*.flatpak
+*.tar.gz
+*.tar.xz
+*.tgz
+*.zip
+*.7z
+
+# Временное от `fyne package` / Windows-ресурсов
+*.syso
+fyne_metadata_init.go
+*.icns
+*.iconset/
+Icon.png.bak
+
+# ---------------------------------------------------------------------
+#  Go
+# ---------------------------------------------------------------------
+*.test
+*.out
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+trace.out
+coverage.*
+cover.out
+*.cover
+*.coverprofile
+/vendor/
+go.work
+go.work.sum
+__debug_bin*
+debug.test
+
+# ---------------------------------------------------------------------
+#  Секреты, ключи, локальные конфиги
+# ---------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+.envrc
+.secrets
+secrets/
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+*.gpg
+*.asc
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+*.ppk
+known_hosts
+known_hosts.old
+authorized_keys
+*.provisionprofile
+*.mobileprovision
+credentials.json
+servers.json
+state.json
+*.local.json
+*.local.toml
+*.local.yaml
+*.local.yml
+config.local.*
+
+# ---------------------------------------------------------------------
+#  Логи, дампы, временное
+# ---------------------------------------------------------------------
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+.cache/
+
+# ---------------------------------------------------------------------
+#  macOS
+# ---------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ---------------------------------------------------------------------
+#  Windows
+# ---------------------------------------------------------------------
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msm
+*.lnk
+
+# ---------------------------------------------------------------------
+#  Linux
+# ---------------------------------------------------------------------
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ---------------------------------------------------------------------
+#  IDE / редакторы
+# ---------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+.history/
+.fleet/
+.zed/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+.classpath
+*.kate-swp
+\#*\#
+.\#*
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.nova/
+
+# ---------------------------------------------------------------------
+#  AI-ассистенты (локальные настройки)
+# ---------------------------------------------------------------------
+.claude/settings.local.json
+.cursor/

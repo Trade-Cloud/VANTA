@@ -1,0 +1,8 @@
+Website = "https://github.com/Trade-Cloud/VANTA"
+
+[Details]
+  Icon = "assets/app-icon/mac-1024.png"
+  Name = "Vanta"
+  ID = "org.trade-cloud.vanta"
+  Version = "0.1.0"
+  Build = 1

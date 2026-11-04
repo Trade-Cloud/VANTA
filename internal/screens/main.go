@@ -1,6 +1,8 @@
 package screens
 
 import (
+	"context"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
@@ -9,6 +11,7 @@ import (
 	"github.com/Trade-Cloud/vanta/internal/apptheme"
 	"github.com/Trade-Cloud/vanta/internal/core"
 	"github.com/Trade-Cloud/vanta/internal/header"
+	"github.com/Trade-Cloud/vanta/internal/host"
 )
 
 // Main — окно «Основа»: панель. Сверху sticky header (не прокручивается
@@ -26,7 +29,7 @@ func Main(w fyne.Window, st *core.Store) fyne.CanvasObject {
 		}
 		layer := header.NewLayer()
 		hd := header.New(w, st, layer)
-		pg := newSectionPage(st)
+		pg := newSectionPage(st, w)
 		body := container.NewBorder(hd.Object(), nil, nil, nil, container.NewVScroll(pg.obj))
 		root.Objects = []fyne.CanvasObject{body, layer.Object()}
 		root.Refresh()
@@ -48,15 +51,23 @@ func Main(w fyne.Window, st *core.Store) fyne.CanvasObject {
 
 // sectionPage — заглушка контента раздела: заголовок, контекст сервера, «в разработке».
 type sectionPage struct {
-	st     *core.Store
-	obj    *fyne.Container
-	status *widget.Label
-	note   *widget.Label
-	offs   []func()
+	st  *core.Store
+	w   fyne.Window
+	ssh *sshPage // вкладка Security › SSH, пока она открыта
+	obj *fyne.Container
+
+	// Вкладка сервера (Resources, Services…), пока она открыта.
+	tool      toolPage
+	toolRoute core.Route
+	toolHost  *host.Host
+	toolStop  context.CancelFunc
+	status    *widget.Label
+	note      *widget.Label
+	offs      []func()
 }
 
-func newSectionPage(st *core.Store) *sectionPage {
-	p := &sectionPage{st: st, obj: container.NewVBox()}
+func newSectionPage(st *core.Store, w fyne.Window) *sectionPage {
+	p := &sectionPage{st: st, w: w, obj: container.NewStack()}
 	p.offs = []func(){
 		st.On(core.TopicRoute, p.build),
 		st.On(core.TopicActive, p.build),
@@ -71,9 +82,72 @@ func (p *sectionPage) dispose() {
 	for _, off := range p.offs {
 		off()
 	}
+	if p.ssh != nil {
+		p.ssh.dispose()
+	}
+	p.closeTool()
+}
+
+func (p *sectionPage) closeTool() {
+	if p.tool != nil {
+		p.tool.dispose()
+		p.toolStop()
+		p.tool, p.toolHost, p.toolRoute = nil, nil, ""
+	}
+}
+
+// buildTool — вкладка, работающая с сервером. Страница живёт, пока открыт
+// раздел и не сменилось подключение.
+func (p *sectionPage) buildTool(r core.Route, mk func(*toolEnv) toolPage) {
+	h := p.st.Host()
+	if p.tool != nil && p.toolRoute == r && p.toolHost == h && h != nil {
+		return
+	}
+	p.closeTool()
+	p.status = nil
+	if h == nil {
+		title, _ := core.PageOf(r)
+		p.obj.Objects = []fyne.CanvasObject{container.NewPadded(noServer(p.st, title))}
+		p.obj.Refresh()
+		return
+	}
+	sv, _ := p.st.Active()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.tool = mk(&toolEnv{st: p.st, w: p.w, h: h, sv: sv, ctx: ctx})
+	p.toolRoute, p.toolHost, p.toolStop = r, h, cancel
+	p.obj.Objects = []fyne.CanvasObject{container.NewPadded(p.tool.object())}
+	p.obj.Refresh()
 }
 
 func (p *sectionPage) build() {
+	// Готовые разделы — свои страницы; они живут, пока открыт раздел, и сами
+	// следят за сервером (не пересоздаются на каждое событие Store).
+	if p.st.Route() == RouteSSH {
+		p.closeTool()
+		if p.ssh == nil {
+			p.ssh = newSSHPage(p.st, p.w)
+		}
+		p.status = nil
+		p.obj.Objects = []fyne.CanvasObject{container.NewPadded(p.ssh.obj)}
+		p.obj.Refresh()
+		return
+	}
+	if p.ssh != nil {
+		p.ssh.dispose()
+		p.ssh = nil
+	}
+	if p.st.Route() == RouteAppSettings {
+		p.closeTool()
+		p.status = nil
+		p.obj.Objects = []fyne.CanvasObject{container.NewPadded(appSettings(p.st))}
+		p.obj.Refresh()
+		return
+	}
+	if mk, ok := toolPages[p.st.Route()]; ok {
+		p.buildTool(p.st.Route(), mk)
+		return
+	}
+	p.closeTool()
 	title, trail := core.PageOf(p.st.Route())
 	// Только виджеты Fyne: они берут цвета из темы при отрисовке.
 	h := widget.NewLabel(title)
@@ -102,12 +176,12 @@ func (p *sectionPage) build() {
 	stub := widget.NewLabel("Раздел «" + title + "» в разработке. Здесь появится его содержимое; header от страницы не зависит.")
 	stub.Wrapping = fyne.TextWrapWord
 
-	p.obj.Objects = []fyne.CanvasObject{
+	p.obj.Objects = []fyne.CanvasObject{container.NewVBox(
 		container.NewVBox(h, crumbs),
 		server,
 		p.note,
 		stub,
-	}
+	)}
 	p.tick()
 	p.obj.Refresh()
 }

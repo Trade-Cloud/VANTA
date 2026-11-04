@@ -133,7 +133,7 @@ func fpsBadge(s fpsSnap) []fyne.CanvasObject {
 	size := txt.MinSize()
 	pad := float32(4)
 	bg := canvas.NewRectangle(color.NRGBA{0, 0, 0, 0xB0})
-	bg.CornerRadius = 4
+	bg.CornerRadius = 0
 	bg.Move(fyne.NewPos(pad, pad))
 	bg.Resize(size.Add(fyne.NewSize(pad*2, pad*2)))
 	txt.Move(fyne.NewPos(pad*2, pad*2))

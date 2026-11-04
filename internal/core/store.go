@@ -11,13 +11,17 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Trade-Cloud/vanta/internal/agent"
+	"github.com/Trade-Cloud/vanta/internal/host"
 	"github.com/Trade-Cloud/vanta/internal/prefs"
 )
 
@@ -27,7 +31,11 @@ const StaleAfter = 10 * time.Second
 
 const (
 	loadTimeout = 8 * time.Second
-	historyMax  = 8
+	// connectTimeout — общий предел Connect. Большой, потому что внутри
+	// бывают вопросы человеку (ключ хоста, пароль); сетевые таймауты
+	// Backend держит сам.
+	connectTimeout = 5 * time.Minute
+	historyMax     = 8
 )
 
 // Topic — что поменялось. Подписчик сам перечитывает нужное из Store.
@@ -41,6 +49,7 @@ const (
 	TopicRoute                      // текущий раздел
 	TopicTheme                      // тема оформления
 	TopicHistory                    // история поиска
+	TopicSettings                   // настройки приложения
 )
 
 // Status — то, что показывает индикатор сервера.
@@ -98,6 +107,7 @@ type Store struct {
 	connecting  bool
 	connErr     error
 	connGen     int // ответ старого Connect игнорируем
+	connCancel  context.CancelFunc
 
 	notes       []agent.Notification
 	notesLoaded bool
@@ -106,12 +116,65 @@ type Store struct {
 	history []string
 	theme   string
 	route   Route
+	autoRes bool // автообновление вкладки Resources
+	// Вкладки с выключенным автообновлением (AutoRefresh).
+	autoOff map[string]bool
 
 	subs   map[Topic]map[int]func()
 	nextID int
 
 	unsub func()
 	stop  chan struct{}
+
+	// Работа с подключённым сервером (вкладки Resources, Services…).
+	host    *host.Host
+	hostGen int
+	// SudoAsker спрашивает пароль sudo (окно). Задаётся до Start.
+	SudoAsker func(ctx context.Context, sv agent.Server, retry bool) (string, bool)
+}
+
+// clientSource — Backend, у которого можно взять SSH-клиент подключения
+// (remote.Backend; у Mock его нет).
+type clientSource interface {
+	Client(id string) *ssh.Client
+}
+
+// Host — подключённый сервер для команд; nil — не подключены (или Backend
+// без SSH, например Mock). Объект живёт, пока живо подключение: после
+// переподключения это будет уже другой *host.Host.
+func (s *Store) Host() *host.Host {
+	if !s.Connected() {
+		s.dropHost()
+		return nil
+	}
+	if s.host != nil && s.hostGen == s.connGen {
+		return s.host
+	}
+	s.dropHost()
+	cs, ok := s.be.(clientSource)
+	if !ok {
+		return nil
+	}
+	c := cs.Client(s.active)
+	if c == nil {
+		return nil
+	}
+	sv, _ := s.Active()
+	var ask host.SudoAsker
+	if s.SudoAsker != nil {
+		f := s.SudoAsker
+		ask = func(ctx context.Context, _ string, retry bool) (string, bool) { return f(ctx, sv, retry) }
+	}
+	s.host = host.New(c, sv.SSHUser(), ask)
+	s.hostGen = s.connGen
+	return s.host
+}
+
+func (s *Store) dropHost() {
+	if s.host != nil {
+		go s.host.Close()
+		s.host = nil
+	}
 }
 
 // NewStore создаёт состояние. post должен выполнить функцию в UI-горутине.
@@ -123,6 +186,8 @@ func NewStore(be agent.Backend, post func(func()), st prefs.State) *Store {
 		reach:   map[string]agent.Reach{},
 		theme:   st.Theme,
 		history: st.SearchHistory,
+		autoRes: !st.ResourcesAutoOff,
+		autoOff: offSet(st.AutoOff),
 		route:   RouteOverview,
 		subs:    map[Topic]map[int]func(){},
 	}
@@ -200,8 +265,24 @@ func (s *Store) handle(e agent.Event) {
 	if n := e.Notification; n != nil {
 		s.addNote(*n)
 	}
+	if l := e.Lost; l != nil && l.ServerID == s.active && !s.connecting && s.connErr == nil {
+		s.connErr = l.Err
+		delete(s.beats, l.ServerID)
+		if sv, ok := s.Server(l.ServerID); ok {
+			s.Notify(agent.SeverityError, "Соединение с "+sv.Name+" потеряно", l.Err.Error())
+		}
+		s.emit(TopicActive)
+	}
 	if e.ServersChanged {
 		s.ReloadServers()
+	}
+}
+
+// cancelConnect прерывает идущий Connect (и закрывает окна вопросов).
+func (s *Store) cancelConnect() {
+	if s.connCancel != nil {
+		s.connCancel()
+		s.connCancel = nil
 	}
 }
 
@@ -285,6 +366,7 @@ func (s *Store) SetActive(id string) {
 	if id == s.active && (s.connecting || s.connErr == nil) {
 		return // уже подключены или подключаемся
 	}
+	s.cancelConnect()
 	if s.active != "" && s.active != id {
 		s.be.Disconnect(s.active)
 	}
@@ -292,13 +374,23 @@ func (s *Store) SetActive(id string) {
 	delete(s.beats, id)
 	s.connGen++
 	gen := s.connGen
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	s.connCancel = cancel
 	s.emit(TopicActive)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), loadTimeout)
 		defer cancel()
 		err := s.be.Connect(ctx, id)
 		s.post(func() {
 			if gen != s.connGen {
+				return
+			}
+			s.connCancel = nil
+			if errors.Is(err, agent.ErrCancelled) {
+				// Человек сам отказался (закрыл окно пароля/ключа хоста).
+				s.be.Disconnect(id)
+				s.active, s.connecting, s.connErr = "", false, nil
+				s.connGen++
+				s.emit(TopicActive)
 				return
 			}
 			s.connecting, s.connErr = false, err
@@ -317,6 +409,7 @@ func (s *Store) Disconnect() {
 	if s.active == "" {
 		return
 	}
+	s.cancelConnect()
 	s.be.Disconnect(s.active)
 	delete(s.beats, s.active)
 	s.active, s.connecting, s.connErr = "", false, nil
@@ -379,6 +472,33 @@ func (s *Store) SaveServer(sv agent.Server, done func(agent.Server, error)) {
 			}
 			if done != nil {
 				done(saved, err)
+			}
+		})
+	}()
+}
+
+// DeleteServer удаляет сервер (и его сохранённый секрет); done — в UI-горутине.
+func (s *Store) DeleteServer(id string, done func(error)) {
+	if id == s.active {
+		s.Disconnect()
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), loadTimeout)
+		defer cancel()
+		err := s.be.DeleteServer(ctx, id)
+		s.post(func() {
+			if err == nil {
+				for i := range s.servers {
+					if s.servers[i].ID == id {
+						s.servers = append(s.servers[:i:i], s.servers[i+1:]...)
+						break
+					}
+				}
+				delete(s.reach, id)
+				s.emit(TopicServers)
+			}
+			if done != nil {
+				done(err)
 			}
 		})
 	}()
@@ -513,6 +633,20 @@ func (s *Store) SetTheme(t string) {
 		slog.Error("не удалось сохранить тему", "err", err)
 	}
 	s.emit(TopicTheme)
+}
+
+// ResourcesAuto — обновлять ли вкладку Resources самой (раз в 2 с).
+func (s *Store) ResourcesAuto() bool { return s.autoRes }
+
+func (s *Store) SetResourcesAuto(on bool) {
+	if on == s.autoRes {
+		return
+	}
+	s.autoRes = on
+	if err := prefs.Update(func(st *prefs.State) { st.ResourcesAutoOff = !on }); err != nil {
+		slog.Error("не удалось сохранить настройку автообновления", "err", err)
+	}
+	s.emit(TopicSettings)
 }
 
 func (s *Store) History() []string { return s.history }

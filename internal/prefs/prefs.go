@@ -33,6 +33,12 @@ type State struct {
 	// Панель «Основа».
 	Theme         string   `json:"theme,omitempty"`          // "" (как в ОС), "light", "dark"
 	SearchHistory []string `json:"search_history,omitempty"` // последние запросы, новые первыми
+
+	// Настройки приложения. Хранится «выключено», чтобы по умолчанию
+	// (поля нет) автообновление было включено.
+	ResourcesAutoOff bool `json:"resources_auto_off,omitempty"` // вкладка Resources не обновляется сама
+	// Вкладки (processes, network, storage), у которых автообновление выключено.
+	AutoOff []string `json:"auto_off,omitempty"`
 }
 
 // Path — путь к файлу состояния.

@@ -97,6 +97,7 @@ func (m *Mock) SaveServer(ctx context.Context, s Server) (Server, error) {
 	if err := m.sleep(ctx, 300*time.Millisecond); err != nil {
 		return Server{}, err
 	}
+	s.Secret = ""
 	m.mu.Lock()
 	if s.ID == "" {
 		m.nextID++
@@ -113,6 +114,23 @@ func (m *Mock) SaveServer(ctx context.Context, s Server) (Server, error) {
 	m.mu.Unlock()
 	m.emit(Event{ServersChanged: true})
 	return s, nil
+}
+
+func (m *Mock) DeleteServer(ctx context.Context, id string) error {
+	if err := m.sleep(ctx, 300*time.Millisecond); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	for i := range m.servers {
+		if m.servers[i].ID == id {
+			m.servers = append(m.servers[:i], m.servers[i+1:]...)
+			break
+		}
+	}
+	delete(m.conn, id)
+	m.mu.Unlock()
+	m.emit(Event{ServersChanged: true})
+	return nil
 }
 
 func (m *Mock) Notifications(ctx context.Context) ([]Notification, error) {
